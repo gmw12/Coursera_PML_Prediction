@@ -1,0 +1,123 @@
+---
+title: "Practical Machine Learning - Prediction"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+
+## Data
+
+The training data found here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The quiz/testing data found here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+## Setup
+
+Caret library is required for this analysis.
+```{r load-packages, message = FALSE}
+library(caret)
+```
+
+
+## Load Data
+
+Data was manually downloaded and placed in the project data directory.  Data will be partially cleaned while being loaded.  Empty cells and div/0 errors will be replaced with NA.  Testing data will be loaded as quiz_data.  A new test data set will be created later.
+
+```{r download}
+
+train_data <- read.csv("data/pml-training.csv", na.strings=c("NA","","#DIV/0!"))
+quiz_data <- read.csv("data/pml-testing.csv")
+
+
+```
+
+## Clean Data
+
+Remove columns with NA values, and non-predictive information.  52 variables and 1 outcome are left for the analysis.
+
+```{r}
+
+train_data <- train_data[,colSums(is.na(train_data)) == 0]
+train_data <- train_data[, -c(1:7)]
+dim(train_data)
+```
+
+### Validation Set
+
+Split the data into training and test sets.  This test set will be used as a validation set.  Accuracy and Error will be calculated for this set.  The downloaded test set will be saved for the final quiz predictions.
+
+```{r}
+set.seed(555)
+inTrain <- createDataPartition(y=train_data$classe, p=0.75,list=FALSE)
+training <- train_data[inTrain,] 
+testing <- train_data[-inTrain,]
+
+```
+
+
+### Model with Cross Validation
+
+Several methods were explored:  linear discriminant analysis, boosting, and random forest.  Random forest had the best scores so that will be the only method displayed so that the report will fit with the rubric guidelines.  
+
+Cross Validation using random forest was used at 5 fold with a 60% training percentage.  Parallel processing as used to decrease processing time.  The data was also centered and scaled due to the large differences in the ranges of the different data fields. 
+
+```{r}
+
+if (!file.exists("modFit_rf.rda")) {
+    modFit_cv_rf <-trainControl(method="cv", number=5, p=0.6, allowParallel=TRUE, verbose=FALSE)
+    modFit_rf <-train(classe~.,data=training, method="rf", metric="Accuracy", 
+                       preProcess=c("center", "scale"), trControl=modFit_cv_rf, verbose=FALSE)
+    save(modFit_rf, file = "modFit_rf.rda")
+}else{
+    load(file = "modFit_rf.rda") 
+}
+
+    print(modFit_rf, digits=4)
+    predictions_rf <- predict(modFit_rf, newdata=testing)
+    confusionMatrix(predictions_rf, as.factor(testing$classe))   
+
+```
+
+### Model Statistics
+
+Final Model
+
+```{r}
+modFit_rf$finalModel
+```
+
+
+Model Accuracy: 99.1% (CI: 98.8 to 99.4)
+OOB estimate of error rate:  0.68%
+
+The most important variables for prediction:
+```{r}
+varImp(modFit_rf)
+```
+
+
+
+### Quiz Results
+
+The final model is applied to the quiz data.  Resulting predictions below.
+
+```{r}
+quiz_pred <- predict(modFit_rf, quiz_data[,-54])
+quiz_pred
+```
+
+
+### Conclusion
+
+The final random forest model had excellent accuracy and error rate.  It successfully predicted 20/20 from the quiz data set.
+
